@@ -14,7 +14,7 @@ if uploaded_file is not None:
     img_array = np.array(image)
     h, w, _ = img_array.shape
 
-    st.image(image, caption="Uploaded Image", use_column_width=True)
+   st.image(image, caption="Uploaded Image", use_container_width=True)
 
     if st.button("Detect License Plate"):
         # 2. Convert to Grayscale & Thresholding (OpenCV Image Processing)
