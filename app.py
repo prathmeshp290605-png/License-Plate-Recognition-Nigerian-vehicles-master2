@@ -1,4 +1,5 @@
 import cv2
+import easyocr
 import numpy as np
 import streamlit as st
 from PIL import Image
@@ -6,52 +7,15 @@ from PIL import Image
 st.set_page_config(page_title="License Plate Detector", layout="centered")
 st.title("🚗 License Plate Detection")
 
+# EasyOCR Model Cache (ॲप फास्ट चालण्यासाठी)
+@st.cache_resource
+def load_ocr():
+    return easyocr.Reader(['en'])
+
+reader = load_ocr()
+
 uploaded_file = st.file_uploader("Upload vehicle image", type=["jpg", "jpeg", "png"])
 
-def detect_plate(img_array):
-    h, w, _ = img_array.shape
-    gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
-    
-    # 1. Edge-preserving filter
-    blur = cv2.bilateralFilter(gray, 11, 17, 17)
-    
-    # 2. Sobel Vertical Gradient (अक्षरांच्या उभ्या रेषा शोधण्यासाठी)
-    sobelx = cv2.Sobel(blur, cv2.CV_8U, 1, 0, ksize=3)
-    
-    # 3. Otsu Thresholding
-    _, thresh = cv2.threshold(sobelx, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    
-    # 4. Morphological Close (अक्षरांचे छोटे बॉक्सेस एकत्र जोडून एक प्लेट बनवणे)
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (17, 3))
-    closed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
-    
-    # 5. Contours शोधणे
-    contours, _ = cv2.findContours(closed.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    contours = sorted(contours, key=cv2.contourArea, reverse=True)[:30]
-
-    plate_crop = None
-    best_box = None
-
-    for c in contours:
-        x, y, bw, bh = cv2.boundingRect(c)
-        aspect_ratio = bw / float(bh)
-        area = bw * bh
-
-        # नंबर प्लेटचे फिल्टर्स (Aspect ratio आणि Vertical Position)
-        if 2.0 <= aspect_ratio <= 6.5 and area > 600 and (h * 0.20 < y < h * 0.80):
-            best_box = (x, y, bw, bh)
-            plate_crop = img_array[y:y+bh, x:x+bw]
-            break
-
-    annotated = img_array.copy()
-    if best_box is not None:
-        x, y, bw, bh = best_box
-        cv2.rectangle(annotated, (x, y), (x + bw, y + bh), (0, 255, 0), 4)
-        return annotated, plate_crop
-    
-    return annotated, None
-
-# Main Streamlit App Logic
 if uploaded_file is not None:
     image = Image.open(uploaded_file)
     img_array = np.array(image)
@@ -60,14 +24,37 @@ if uploaded_file is not None:
     
     if st.button("Detect License Plate"):
         with st.spinner("Detecting license plate..."):
-            annotated_img, plate_crop = detect_plate(img_array)
+            # EasyOCR द्वारे फोटोतील टेक्स्ट आणि लोकेशन शोधणे
+            results = reader.readtext(img_array)
             
+            annotated = img_array.copy()
+            plate_crop = None
+            detected_text = ""
+
+            for (bbox, text, prob) in results:
+                # जर टेक्स्ट ३ पेक्षा जास्त अक्षरांचे असेल आणि कॉन्फिडन्स योग्य असेल
+                if prob > 0.25 and len(text.strip()) >= 4:
+                    (top_left, top_right, bottom_right, bottom_left) = bbox
+                    x1, y1 = int(top_left[0]), int(top_left[1])
+                    x2, y2 = int(bottom_right[0]), int(bottom_right[1])
+
+                    # प्लेटच्या आकारासाठी थोडे पॅडिंग (Padding)
+                    h_img, w_img, _ = img_array.shape
+                    pad_x, pad_y = 15, 10
+                    x1_p, y1_p = max(0, x1 - pad_x), max(0, y1 - pad_y)
+                    x2_p, y2_p = min(w_img, x2 + pad_x), min(h_img, y2 + pad_y)
+
+                    plate_crop = img_array[y1_p:y2_p, x1_p:x2_p]
+                    cv2.rectangle(annotated, (x1_p, y1_p), (x2_p, y2_p), (0, 255, 0), 4)
+                    detected_text = text
+                    break
+
             st.subheader("Detection Result")
-            st.image(annotated_img, caption="Detected Vehicle", use_container_width=True)
-            
+            st.image(annotated, caption="Detection Output", use_container_width=True)
+
             if plate_crop is not None:
                 st.subheader("Detected Plate Region")
-                st.image(plate_crop, caption="Cropped License Plate", width=300)
-                st.success("नंबर प्लेट यशस्वीपणे सापडली!")
+                st.image(plate_crop, caption=f"Detected Text: {detected_text}", width=300)
+                st.success(f"नंबर प्लेट यशस्वीपणे सापडली! (नंबर: {detected_text})")
             else:
-                st.error("नंबर प्लेट सापडली नाही. थ्रेशोल्ड अडजस्ट करा किंवा EasyOCR वापरा.")
+                st.error("नंबर प्लेट सापडली नाही.")
