@@ -19,7 +19,8 @@ if uploaded_file is not None:
 if uploaded_file is not None:
     image = Image.open(uploaded_file)
     st.image(image, caption="Uploaded Image", use_container_width=True)
-
+if st.button("Detect License Plate"):
+        st.info("Detecting license plate...")
 def detect_plate(image):
         blur = cv2.GaussianBlur(gray, (5, 5), 0)
         edged = cv2.Canny(blur, 100, 200)
