@@ -22,39 +22,51 @@ if uploaded_file is not None:
     
     st.image(image, caption="Uploaded Image", use_container_width=True)
     
-    if st.button("Detect License Plate"):
+  if st.button("Detect License Plate"):
         with st.spinner("Detecting license plate..."):
-            # EasyOCR द्वारे फोटोतील टेक्स्ट आणि लोकेशन शोधणे
             results = reader.readtext(img_array)
             
             annotated = img_array.copy()
-            plate_crop = None
-            detected_text = ""
+            h_img, w_img, _ = img_array.shape
+            
+            all_x1, all_y1, all_x2, all_y2 = [], [], [], []
+            detected_texts = []
 
+            # १. सर्व डिटेक्ट झालेल्या टेक्स्टचे बॉक्सेस एकत्र करणे
             for (bbox, text, prob) in results:
-                # जर टेक्स्ट ३ पेक्षा जास्त अक्षरांचे असेल आणि कॉन्फिडन्स योग्य असेल
-                if prob > 0.25 and len(text.strip()) >= 4:
+                if prob > 0.20 and len(text.strip()) >= 2:
                     (top_left, top_right, bottom_right, bottom_left) = bbox
-                    x1, y1 = int(top_left[0]), int(top_left[1])
-                    x2, y2 = int(bottom_right[0]), int(bottom_right[1])
+                    all_x1.append(int(top_left[0]))
+                    all_y1.append(int(top_left[1]))
+                    all_x2.append(int(bottom_right[0]))
+                    all_y2.append(int(bottom_right[1]))
+                    detected_texts.append(text)
 
-                    # प्लेटच्या आकारासाठी थोडे पॅडिंग (Padding)
-                    h_img, w_img, _ = img_array.shape
-                    pad_x, pad_y = 15, 10
-                    x1_p, y1_p = max(0, x1 - pad_x), max(0, y1 - pad_y)
-                    x2_p, y2_p = min(w_img, x2 + pad_x), min(h_img, y2 + pad_y)
+            plate_crop = None
+            full_text = " ".join(detected_texts)
 
-                    plate_crop = img_array[y1_p:y2_p, x1_p:x2_p]
-                    cv2.rectangle(annotated, (x1_p, y1_p), (x2_p, y2_p), (0, 255, 0), 4)
-                    detected_text = text
-                    break
+            # २. संपूर्ण नंबर प्लेट एकत्र क्रॉप करणे (Combine Bounding Boxes)
+            if all_x1:
+                x1 = min(all_x1)
+                y1 = min(all_y1)
+                x2 = max(all_x2)
+                y2 = max(all_y2)
 
+                # दोन्ही बाजूंना अतिरिक्त पॅडिंग (Padding)
+                pad_x, pad_y = 25, 15
+                x1_p, y1_p = max(0, x1 - pad_x), max(0, y1 - pad_y)
+                x2_p, y2_p = min(w_img, x2 + pad_x), min(h_img, y2 + pad_y)
+
+                plate_crop = img_array[y1_p:y2_p, x1_p:x2_p]
+                cv2.rectangle(annotated, (x1_p, y1_p), (x2_p, y2_p), (0, 255, 0), 4)
+
+            # 3. Display Results
             st.subheader("Detection Result")
             st.image(annotated, caption="Detection Output", use_container_width=True)
 
             if plate_crop is not None:
                 st.subheader("Detected Plate Region")
-                st.image(plate_crop, caption=f"Detected Text: {detected_text}", width=300)
-                st.success(f"नंबर प्लेट यशस्वीपणे सापडली! (नंबर: {detected_text})")
+                st.image(plate_crop, caption=f"Detected Text: {full_text}", width=350)
+                st.success(f"पूर्ण नंबर प्लेट यशस्वीपणे सापडली! ({full_text})")
             else:
                 st.error("नंबर प्लेट सापडली नाही.")
