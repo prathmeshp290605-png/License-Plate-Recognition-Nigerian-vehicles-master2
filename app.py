@@ -6,20 +6,27 @@ from PIL import Image
 st.set_page_config(page_title="License Plate Detector", layout="centered")
 st.title("🚗 License Plate Detection")
 
-# 1. Image Uploader
 uploaded_file = st.file_uploader("Upload vehicle image", type=["jpg", "jpeg", "png"])
 
-# 2. Plate Detection Function
 def detect_plate(img_array):
     h, w, _ = img_array.shape
-    
-    # Image Preprocessing
     gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
-    blur = cv2.GaussianBlur(gray, (5, 5), 0)
-    edged = cv2.Canny(blur, 100, 200)
-
-    # Find Contours
-    contours, _ = cv2.findContours(edged.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    
+    # 1. Edge-preserving filter
+    blur = cv2.bilateralFilter(gray, 11, 17, 17)
+    
+    # 2. Sobel Vertical Gradient (अक्षरांच्या उभ्या रेषा शोधण्यासाठी)
+    sobelx = cv2.Sobel(blur, cv2.CV_8U, 1, 0, ksize=3)
+    
+    # 3. Otsu Thresholding
+    _, thresh = cv2.threshold(sobelx, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    
+    # 4. Morphological Close (अक्षरांचे छोटे बॉक्सेस एकत्र जोडून एक प्लेट बनवणे)
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (17, 3))
+    closed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
+    
+    # 5. Contours शोधणे
+    contours, _ = cv2.findContours(closed.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     contours = sorted(contours, key=cv2.contourArea, reverse=True)[:30]
 
     plate_crop = None
@@ -30,10 +37,8 @@ def detect_plate(img_array):
         aspect_ratio = bw / float(bh)
         area = bw * bh
 
-        # Filter 1: Number Plate Aspect Ratio (2.0 to 5.5)
-        # Filter 2: Ignore top sky & extreme bottom ground (y between 15% and 75% of image height)
-        # Filter 3: Minimum Area
-        if 2.0 <= aspect_ratio <= 5.5 and (area > 1200) and (h * 0.15 < y < h * 0.75):
+        # नंबर प्लेटचे फिल्टर्स (Aspect ratio आणि Vertical Position)
+        if 2.0 <= aspect_ratio <= 6.5 and area > 600 and (h * 0.20 < y < h * 0.80):
             best_box = (x, y, bw, bh)
             plate_crop = img_array[y:y+bh, x:x+bw]
             break
@@ -46,7 +51,7 @@ def detect_plate(img_array):
     
     return annotated, None
 
-# 3. Main Streamlit App Logic
+# Main Streamlit App Logic
 if uploaded_file is not None:
     image = Image.open(uploaded_file)
     img_array = np.array(image)
@@ -65,4 +70,4 @@ if uploaded_file is not None:
                 st.image(plate_crop, caption="Cropped License Plate", width=300)
                 st.success("नंबर प्लेट यशस्वीपणे सापडली!")
             else:
-                st.error("नंबर प्लेट सापडली नाही. दुसरी इमेज वापरून पहा.")
+                st.error("नंबर प्लेट सापडली नाही. थ्रेशोल्ड अडजस्ट करा किंवा EasyOCR वापरा.")
