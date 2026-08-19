@@ -11,14 +11,16 @@ uploaded_file = st.file_uploader("इमेज अपलोड करा...", ty
 if uploaded_file is not None:
     # 1. Load Image
     image = Image.open(uploaded_file)
-    img_array = np.array(image)
-    h, w, _ = img_array.shape
+    uploaded_file = st.file_uploader(
+    "Upload vehicle image",
+    type=["jpg", "jpeg", "png"]
+)
 
-   st.image(image, caption="Uploaded Image", use_container_width=True)
+if uploaded_file is not None:
+    image = Image.open(uploaded_file)
+    st.image(image, caption="Uploaded Image", use_container_width=True)
 
-    if st.button("Detect License Plate"):
-        # 2. Convert to Grayscale & Thresholding (OpenCV Image Processing)
-        gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
+def detect_plate(image):
         blur = cv2.GaussianBlur(gray, (5, 5), 0)
         edged = cv2.Canny(blur, 100, 200)
 
