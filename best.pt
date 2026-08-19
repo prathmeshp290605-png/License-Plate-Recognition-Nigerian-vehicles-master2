@@ -1,0 +1,67 @@
+import cv2
+import numpy as np
+import streamlit as st
+from PIL import Image
+from ultralytics import YOLO
+
+# Streamlit App Title
+st.title("🚗 License Plate Detection App")
+
+# 1. Load YOLO Model
+@st.cache_resource
+def load_model():
+    # तुमच्या trained model ची पथा लिंक इथे द्या (उदा. 'best.pt' किंवा 'yolov8n.pt')
+    return YOLO("best.pt")
+
+model = load_model()
+
+# 2. File Uploader
+uploaded_file = st.file_uploader("गाडीचा फोटो अपलोड करा...", type=["jpg", "jpeg", "png"])
+
+if uploaded_file is not None:
+    # Image Load
+    image = Image.open(uploaded_file)
+    img_array = np.array(image)
+    
+    st.image(image, caption="Uploaded Image", use_column_width=True)
+    
+    if st.button("Detect License Plate"):
+        # 3. Model Inference (Confidence threshold = 0.5)
+        results = model.predict(img_array, conf=0.5)
+        
+        detected_plate = None
+        annotated_img = img_array.copy()
+        
+        for result in results:
+            boxes = result.boxes
+            for box in boxes:
+                # Bounding Box Coordinates
+                x1, y1, x2, y2 = map(int, box.xyxy[0])
+                width = x2 - x1
+                height = y2 - y1
+                
+                # Prevent Division by Zero
+                if height == 0:
+                    continue
+                    
+                aspect_ratio = width / float(height)
+                
+                # 4. Filter: Number Plate Aspect Ratio (Normal plates are between 2.5 and 6.0)
+                if 2.5 <= aspect_ratio <= 6.0:
+                    # Crop Plate Region
+                    detected_plate = img_array[y1:y2, x1:x2]
+                    
+                    # Draw Bounding Box on Original Image
+                    cv2.rectangle(annotated_img, (x1, y1), (x2, y2), (0, 255, 0), 3)
+                    break  # पहिली व्हॅलिड प्लेट सापडल्यावर ब्रेक करा
+        
+        # 5. Display Results
+        st.subheader("Detection Result")
+        st.image(annotated_img, caption="Detection Output", use_column_width=True)
+        
+        if detected_plate is not None:
+            st.subheader("Detected Plate Region")
+            st.image(detected_plate, caption="Cropped License Plate", width=300)
+            st.success("License plate region successfully detected!")
+        else:
+            st.error("योग्य नंबर प्लेट सापडली नाही. थ्रेशोल्ड किंवा इमेज तपासा.")
