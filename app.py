@@ -7,13 +7,14 @@ from PIL import Image
 st.set_page_config(page_title="License Plate Detector", layout="centered")
 st.title("🚗 License Plate Detection")
 
-# EasyOCR Model Cache (ॲप फास्ट चालण्यासाठी)
+# EasyOCR Model Load
 @st.cache_resource
 def load_ocr():
     return easyocr.Reader(['en'])
 
 reader = load_ocr()
 
+# File Uploader
 uploaded_file = st.file_uploader("Upload vehicle image", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
@@ -22,7 +23,7 @@ if uploaded_file is not None:
     
     st.image(image, caption="Uploaded Image", use_container_width=True)
     
-  if st.button("Detect License Plate"):
+    if st.button("Detect License Plate"):
         with st.spinner("Detecting license plate..."):
             results = reader.readtext(img_array)
             
@@ -32,7 +33,7 @@ if uploaded_file is not None:
             all_x1, all_y1, all_x2, all_y2 = [], [], [], []
             detected_texts = []
 
-            # १. सर्व डिटेक्ट झालेल्या टेक्स्टचे बॉक्सेस एकत्र करणे
+            # १. सर्व डिटेक्ट झालेल्या टेक्स्टचे कोऑर्डिनेट्स एकत्र करणे
             for (bbox, text, prob) in results:
                 if prob > 0.20 and len(text.strip()) >= 2:
                     (top_left, top_right, bottom_right, bottom_left) = bbox
@@ -45,14 +46,14 @@ if uploaded_file is not None:
             plate_crop = None
             full_text = " ".join(detected_texts)
 
-            # २. संपूर्ण नंबर प्लेट एकत्र क्रॉप करणे (Combine Bounding Boxes)
+            # २. संपूर्ण नंबर प्लेट एकत्र क्रॉप करणे (MH 12 HN 1375)
             if all_x1:
                 x1 = min(all_x1)
                 y1 = min(all_y1)
                 x2 = max(all_x2)
                 y2 = max(all_y2)
 
-                # दोन्ही बाजूंना अतिरिक्त पॅडिंग (Padding)
+                # पॅडिंग (Padding)
                 pad_x, pad_y = 25, 15
                 x1_p, y1_p = max(0, x1 - pad_x), max(0, y1 - pad_y)
                 x2_p, y2_p = min(w_img, x2 + pad_x), min(h_img, y2 + pad_y)
@@ -60,7 +61,7 @@ if uploaded_file is not None:
                 plate_crop = img_array[y1_p:y2_p, x1_p:x2_p]
                 cv2.rectangle(annotated, (x1_p, y1_p), (x2_p, y2_p), (0, 255, 0), 4)
 
-            # 3. Display Results
+            # ३. निकाल स्क्रीनवर दाखवणे
             st.subheader("Detection Result")
             st.image(annotated, caption="Detection Output", use_container_width=True)
 
